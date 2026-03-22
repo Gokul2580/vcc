@@ -1,9 +1,30 @@
-const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
-
 import React from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Clapperboard, LayoutDashboard, LogOut } from "lucide-react";
+
+// Initialize database connection
+const db = globalThis.__B44_DB__ || { 
+  auth: { 
+    isAuthenticated: async() => false, 
+    me: async() => null,
+    logout: async() => {} 
+  }, 
+  entities: new Proxy({}, { 
+    get: () => ({ 
+      filter: async() => [], 
+      get: async() => null, 
+      create: async() => ({}), 
+      update: async() => ({}), 
+      delete: async() => ({}) 
+    }) 
+  }), 
+  integrations: { 
+    Core: { 
+      UploadFile: async() => ({ file_url: '' }) 
+    } 
+  } 
+};
 
 export default function Layout({ children, currentPageName }) {
   const isEditor = currentPageName === "Editor";
