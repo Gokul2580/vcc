@@ -1,0 +1,58 @@
+{
+  "name": "MediaAsset",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "Foreign key reference to Project.id \u2014 all assets belong to one project"
+    },
+    "name": {
+      "type": "string",
+      "description": "Original file name"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL to the uploaded file in cloud storage"
+    },
+    "media_type": {
+      "type": "string",
+      "enum": [
+        "video",
+        "audio",
+        "image"
+      ],
+      "default": "video",
+      "description": "Type of media asset"
+    },
+    "duration": {
+      "type": "number",
+      "description": "Duration in seconds (for video/audio)"
+    },
+    "file_type": {
+      "type": "string",
+      "description": "MIME type, e.g. video/mp4, audio/mp3"
+    },
+    "file_size": {
+      "type": "number",
+      "description": "File size in bytes"
+    },
+    "thumbnail_url": {
+      "type": "string",
+      "description": "Auto-generated thumbnail image URL"
+    },
+    "width": {
+      "type": "number",
+      "description": "Width in pixels (video/image)"
+    },
+    "height": {
+      "type": "number",
+      "description": "Height in pixels (video/image)"
+    }
+  },
+  "required": [
+    "project_id",
+    "file_url",
+    "name",
+    "media_type"
+  ]
+}

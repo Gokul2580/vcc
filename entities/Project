@@ -1,0 +1,40 @@
+{
+  "name": "Project",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Project name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Project description"
+    },
+    "thumbnail_url": {
+      "type": "string",
+      "description": "Project thumbnail image URL"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "editing",
+        "rendering",
+        "completed"
+      ],
+      "default": "draft",
+      "description": "Project status"
+    },
+    "total_duration": {
+      "type": "number",
+      "description": "Total timeline duration in seconds (denormalized for display)"
+    },
+    "clip_count": {
+      "type": "number",
+      "description": "Number of clips in the timeline (denormalized for display)"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
