@@ -21,7 +21,7 @@ async function renderVideo(timeline) {
     
     if (clips.length === 0) return null;
 
-    // Use AI to stitch and render the video
+    // Serialize timeline data for export
     const timelineData = {
       clips: clips.map(c => ({
         src: c.src,
@@ -31,6 +31,9 @@ async function renderVideo(timeline) {
         trimStart: c.trimStart || 0,
         trimEnd: c.trimEnd || 0,
         order: c.order,
+        speed: c.speed || 1,
+        volume: c.volume ?? 1,
+        muted: c.muted || false,
       })),
       texts: texts.map(t => ({
         content: t.content,
@@ -41,11 +44,21 @@ async function renderVideo(timeline) {
         fontSize: t.fontSize || 24,
         color: t.color || "#ffffff",
       })),
+      exportedAt: new Date().toISOString(),
     };
 
-    // For now, return the first clip URL as a placeholder
-    // In production, this would call a real video rendering service
-    return clips[0]?.src || null;
+    // Create a blob with timeline metadata
+    const jsonBlob = new Blob([JSON.stringify(timelineData, null, 2)], { type: "application/json" });
+    const jsonUrl = URL.createObjectURL(jsonBlob);
+
+    // Return the first video clip as the downloadable file
+    // In production, call a real video rendering service here
+    if (clips[0]?.src) {
+      return clips[0].src;
+    }
+
+    // Fallback: provide the serialized timeline as downloadable JSON
+    return jsonUrl;
   } catch (error) {
     console.error("Render failed:", error);
     return null;

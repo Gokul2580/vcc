@@ -14,6 +14,7 @@ import TimelineTrack from "@/components/editor/TimelineTrack";
 import ChatPanel from "@/components/editor/ChatPanel";
 import RenderModal from "@/components/editor/RenderModal";
 import OneShotGenerator from "@/components/editor/OneShotGenerator";
+import { ClipPropertiesPanel } from "@/components/editor/ClipPropertiesPanel";
 import { timelineReducer } from "@/components/editor/timelineReducer";
 import { ensureTracks, inferMediaType } from "@/components/editor/timelineHelpers";
 import { smartInsertAsset } from "@/components/editor/smartInsertAsset";
@@ -268,6 +269,28 @@ export default function Editor() {
     saveTimeline(updated);
   }, [timeline, saveTimeline]);
 
+  // ── Text overlay repositioning (drag support) ─────────────────────────────
+  const handleTextMove = useCallback((textId, x, y) => {
+    dispatchTimeline({ type: "update_text_position", id: textId, x, y });
+  }, []);
+
+  // ── Clip property controls ───────────────────────────────────────────────
+  const handleTrimClip = useCallback((clipId, duration) => {
+    handleIntent({ type: "action", action: "trim_clip", clipId, duration });
+  }, [handleIntent]);
+
+  const handleSetVolume = useCallback((clipId, volume) => {
+    handleIntent({ type: "action", action: "set_volume", clipId, volume });
+  }, [handleIntent]);
+
+  const handleSetMute = useCallback((clipId, muted) => {
+    handleIntent({ type: "action", action: "set_mute", clipId, muted });
+  }, [handleIntent]);
+
+  const handleChangeSpeed = useCallback((clipId, speed) => {
+    handleIntent({ type: "action", action: "change_playback_speed", clipId, speed });
+  }, [handleIntent]);
+
   // ── Guard ──────────────────────────────────────────────────────────────────
 
   if (!projectId) {
@@ -344,19 +367,31 @@ export default function Editor() {
           <div className="flex-1 p-3 min-h-0">
             <VideoPreview ref={videoPreviewRef} timeline={timeline} assets={localAssets} playSignal={playSignal} />
           </div>
-          <div className="h-48 border-t border-border/50 flex-shrink-0">
-            <TimelineTrack
-              timeline={timeline}
-              onSelectClip={setSelectedClipId}
-              selectedClipId={selectedClipId}
-              onRemoveClip={handleRemoveClip}
-              onSetTransition={handleSetTransition}
-              onReorder={handleReorder}
-              playheadTime={timelinePlayhead}
-              onDragStart={handleTimelineDragStart}
-              onDragEnd={handleTimelineDragEnd}
-              highlightedClipId={highlightedClipId}
-            />
+          <div className="flex-1 border-t border-border/50 flex flex-col min-h-0 max-h-[50vh]">
+            <div className="flex-1 overflow-hidden">
+              <TimelineTrack
+                timeline={timeline}
+                onSelectClip={setSelectedClipId}
+                selectedClipId={selectedClipId}
+                onRemoveClip={handleRemoveClip}
+                onSetTransition={handleSetTransition}
+                onReorder={handleReorder}
+                playheadTime={timelinePlayhead}
+                onDragStart={handleTimelineDragStart}
+                onDragEnd={handleTimelineDragEnd}
+                highlightedClipId={highlightedClipId}
+              />
+            </div>
+            {selectedClipId && (
+              <ClipPropertiesPanel
+                timeline={timeline}
+                selectedClipId={selectedClipId}
+                onTrimClip={handleTrimClip}
+                onSetVolume={handleSetVolume}
+                onSetMute={handleSetMute}
+                onChangeSpeed={handleChangeSpeed}
+              />
+            )}
           </div>
         </div>
 

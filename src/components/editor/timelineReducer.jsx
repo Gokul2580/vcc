@@ -67,6 +67,17 @@ export function timelineReducer(state, action) {
       }));
     }
 
+    case "update_text_position": {
+      if (!action.id || action.x == null || action.y == null) return tl;
+      const x = Math.max(0, Math.min(100, action.x));
+      const y = Math.max(0, Math.min(100, action.y));
+      return updateTrackByType(tl, "text", (track) => ({
+        elements: (track.elements || []).map(el =>
+          el.id === action.id ? { ...el, x, y } : el
+        ),
+      }));
+    }
+
     case "set_volume": {
       if (action.volume == null) return tl;
       const vol = Math.min(1, Math.max(0, action.volume));
