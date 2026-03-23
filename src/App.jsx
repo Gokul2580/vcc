@@ -6,7 +6,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-import Landing from './pages/Landing';
+import UploadPage from './pages/UploadPage';
 import VideoEnhancer from './pages/VideoEnhancer';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -43,8 +43,8 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/Landing" element={<Landing />} />
+      <Route path="/" element={<UploadPage />} />
+      <Route path="/UploadPage" element={<UploadPage />} />
       <Route path="/VideoEnhancer" element={<VideoEnhancer />} />
       <Route path="/home" element={<Navigate to="/" replace />} />
       {Object.entries(Pages).map(([path, Page]) => (

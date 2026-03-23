@@ -1,7 +1,264 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Clapperboard, Mic, Zap, Layers, Download, ArrowRight, Play, Sparkles, ChevronRight, Star, Upload, Film } from "lucide-react";
-import VideoEnhancer from "./VideoEnhancer";
+import React, { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { Upload, Sparkles, ChevronRight, CheckCircle, Zap, Film, LayoutDashboard } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "framer-motion";
+import { firebaseStorage, firebaseDB } from "@/lib/firebaseService";
+import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
+
+export default function Landing() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef(null);
+
+  const handleFileSelect = async (file) => {
+    if (!file) return;
+    if (!user?.uid) {
+      toast.error("Please log in first");
+      return;
+    }
+
+    const MAX_SIZE_MB = 500;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      toast.error(`File too large. Max size is ${MAX_SIZE_MB}MB.`);
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // Upload video to Firebase Storage
+      const filename = `${Date.now()}-${file.name}`;
+      const storagePath = `users/${user.uid}/videos/upload/${filename}`;
+      
+      const uploadResult = await firebaseStorage.upload(storagePath, file);
+      setUploadProgress(50);
+
+      if (!uploadResult.success) {
+        toast.error("Failed to upload video");
+        setUploading(false);
+        return;
+      }
+
+      // Create project in Firebase
+      const projectData = {
+        name: file.name.replace(/\.[^.]+$/, "") || "My Video",
+        status: "editing",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      const projectResult = await firebaseDB.push(
+        `/users/${user.uid}/projects`,
+        projectData
+      );
+
+      if (!projectResult.success) {
+        toast.error("Failed to create project");
+        setUploading(false);
+        return;
+      }
+
+      setUploadProgress(75);
+      const projectId = projectResult.key;
+
+      // Create asset in database
+      const assetData = {
+        name: file.name,
+        file_url: uploadResult.url,
+        file_type: file.type,
+        media_type: "video",
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        storagePath: uploadResult.path
+      };
+
+      const assetResult = await firebaseDB.push(
+        `/users/${user.uid}/projects/${projectId}/assets`,
+        assetData
+      );
+
+      // Create timeline with the uploaded video
+      const timelineData = {
+        clips: [{
+          id: assetResult.key,
+          src: uploadResult.url,
+          name: file.name,
+          order: 1,
+          start: 0,
+          duration: 30,
+          trimStart: 0,
+          trimEnd: 0,
+          volume: 1,
+          muted: false,
+        }],
+        texts: [],
+        settings: { 
+          aspectRatio: "16:9", 
+          fps: 30 
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await firebaseDB.set(
+        `/users/${user.uid}/projects/${projectId}/timeline`,
+        timelineData
+      );
+
+      setUploadProgress(100);
+      toast.success("Video uploaded! Redirecting to editor...");
+      
+      setTimeout(() => {
+        navigate(`/Editor?projectId=${projectId}`);
+      }, 500);
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error(`Upload failed: ${error.message}`);
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const videoFile = Array.from(files).find(f => f.type.startsWith('video/'));
+      if (videoFile) {
+        handleFileSelect(videoFile);
+      } else {
+        toast.error("Please drop a video file");
+      }
+    }
+  };
+
+  return (
+    <div className="dark min-h-screen bg-background text-foreground flex flex-col">
+      {/* Header with Dashboard and Logo */}
+      <nav className="border-b border-border/50 backdrop-blur-xl bg-background/80 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
+              <Film className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-lg font-bold tracking-tight">VOXCUT</span>
+          </div>
+          <Button
+            onClick={() => navigate("/Dashboard")}
+            variant="outline"
+            className="border-violet-500/30 hover:bg-violet-500/10"
+          >
+            <LayoutDashboard className="w-4 h-4 mr-2" />
+            My Projects
+          </Button>
+        </div>
+      </nav>
+
+      {/* Main Upload Area */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-2xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-12"
+          >
+            <div className="flex justify-center mb-6">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500/20 to-blue-500/20 flex items-center justify-center">
+                <Sparkles className="w-10 h-10 text-violet-400" />
+              </div>
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
+              AI-Powered Video Editing
+            </h1>
+            <p className="text-lg text-muted-foreground max-w-xl mx-auto">
+              Upload your video and let AI handle the editing. Use voice commands, drag-and-drop, or our intuitive timeline.
+            </p>
+          </motion.div>
+
+          {/* Upload Zone */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            className="rounded-2xl border-2 border-dashed border-violet-500/30 bg-violet-500/5 hover:bg-violet-500/10 hover:border-violet-500/50 transition-all cursor-pointer p-12 text-center mb-8"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              onChange={(e) => handleFileSelect(e.target.files?.[0])}
+              className="hidden"
+              disabled={uploading}
+            />
+
+            {!uploading ? (
+              <>
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
+                    <Upload className="w-8 h-8 text-white" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-semibold mb-2">Drop your video here</h3>
+                <p className="text-muted-foreground mb-4">
+                  or click to browse (up to 500MB)
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  MP4, WebM, MOV - all formats supported
+                </p>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center animate-pulse">
+                    <Zap className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <p className="text-lg font-semibold">Uploading...</p>
+                <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-violet-500 to-blue-500"
+                    animate={{ width: `${uploadProgress}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">{uploadProgress}%</p>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Features */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+          >
+            {[
+              { icon: Zap, title: "AI Editing", desc: "Voice commands & AI" },
+              { icon: Film, title: "Multi-Track", desc: "Professional timeline" },
+              { icon: CheckCircle, title: "Export Fast", desc: "Download instantly" }
+            ].map((feature, i) => (
+              <div key={i} className="rounded-xl border border-border/50 bg-card/50 p-4 text-center hover:bg-card/80 transition-colors">
+                <feature.icon className="w-6 h-6 mx-auto mb-2 text-violet-400" />
+                <p className="font-semibold text-sm">{feature.title}</p>
+                <p className="text-xs text-muted-foreground mt-1">{feature.desc}</p>
+              </div>
+            ))}
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const FEATURES = [
   { icon: Mic,      title: "Voice Commands",    description: "Just speak naturally. \"Trim the first clip to 5 seconds\" — done instantly.",                   color: "from-violet-500 to-purple-600", glow: "shadow-violet-500/20" },

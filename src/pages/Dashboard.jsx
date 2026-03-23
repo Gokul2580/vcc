@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Clapperboard, Search, Zap } from "lucide-react";
+import { Plus, Clapperboard, Search, Zap, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import ProjectCard from "@/components/dashboard/ProjectCard";
 import CreateProjectDialog from "@/components/dashboard/CreateProjectDialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
@@ -49,30 +50,33 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your video editing workspace
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link to="/VideoEnhancer">
-            <Button
-              className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/20"
-            >
-              <Zap className="w-4 h-4 mr-2" />
-              AI Enhance Video
-            </Button>
-          </Link>
+      <div className="flex items-center gap-2 mb-8">
+        <Button
+          onClick={() => navigate("/")}
+          variant="ghost"
+          size="icon"
+          className="hover:bg-secondary/50"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </Button>
+        <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
+      </div>
+      <div className="flex items-center gap-3 justify-end mb-6">
+        <Link to="/UploadPage">
           <Button
-            onClick={() => setDialogOpen(true)}
-            className="bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-500/20"
+            className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/20"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            New Project
+            <Zap className="w-4 h-4 mr-2" />
+            AI Enhance Video
           </Button>
-        </div>
+        </Link>
+        <Button
+          onClick={() => setDialogOpen(true)}
+          className="bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-500/20"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Project
+        </Button>
       </div>
 
       <div className="mb-6">

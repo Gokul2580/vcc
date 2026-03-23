@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Upload, Sparkles, ChevronRight, CheckCircle, Zap, Film } from "lucide-react";
+import { Upload, Sparkles, ChevronRight, CheckCircle, Zap, Film, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { firebaseStorage, firebaseDB } from "@/lib/firebaseService";
@@ -227,10 +227,20 @@ export default function VideoEnhancer({ initialFile, initialUrl, onBack }) {
       {/* Back */}
       {step > 1 && step < 4 && (
         <button
-          onClick={() => step === 2 && onBack ? onBack() : setStep(s => s - 1)}
-          className="absolute top-6 left-6 text-white/35 hover:text-white/65 text-sm transition-colors z-10"
+          onClick={() => step === 2 ? navigate("/") : setStep(s => s - 1)}
+          className="absolute top-6 left-6 text-white/35 hover:text-white/65 text-sm transition-colors z-10 flex items-center gap-1"
         >
-          ← Back
+          <ChevronLeft className="w-4 h-4" />
+          Back
+        </button>
+      )}
+      {step === 1 && (
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-6 left-6 text-white/35 hover:text-white/65 text-sm transition-colors z-10 flex items-center gap-1"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Back
         </button>
       )}
 
