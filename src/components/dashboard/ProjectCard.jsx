@@ -61,7 +61,7 @@ export default function ProjectCard({ project, onDelete }) {
             </span>
             <span className="text-[10px] text-muted-foreground flex items-center gap-1">
               <Clock className="w-2.5 h-2.5" />
-              {project.created_date ? format(new Date(project.created_date), "MMM d") : ""}
+              {project.createdAt ? format(new Date(project.createdAt), "MMM d") : ""}
             </span>
           </div>
         </div>

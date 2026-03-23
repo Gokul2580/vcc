@@ -1,11 +1,10 @@
-const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
-
 import React, { useState, useRef, useEffect } from "react";
-
 import { Film, Music, Image, Upload, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { inferMediaType, validateAssetForTrack } from "./timelineHelpers";
+import { firebaseStorage, firebaseDB } from "@/lib/firebaseService";
+import { useAuth } from "@/lib/AuthContext";
 
 const MEDIA_ICONS = {
   video: Film,
@@ -69,12 +68,17 @@ function AudioWaveform({ asset }) {
 export default function MediaLibrary({ assets, projectId, onAssetAdded, onAddToTimeline, onAssetDeleted }) {
   const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState("all");
+  const { user } = useAuth();
 
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
+    if (!user?.uid) {
+      toast.error("You must be logged in to upload");
+      return;
+    }
 
-    const MAX_SIZE_MB = 100;
+    const MAX_SIZE_MB = 500;
     const oversized = files.filter(f => f.size > MAX_SIZE_MB * 1024 * 1024);
     if (oversized.length) {
       toast.error(`File too large. Max size is ${MAX_SIZE_MB}MB.`);
@@ -86,21 +90,45 @@ export default function MediaLibrary({ assets, projectId, onAssetAdded, onAddToT
     let uploaded = 0;
     try {
       for (const file of files) {
-        const { file_url } = await db.integrations.Core.UploadFile({ file });
-        // Use MIME type first; fall back to filename extension if MIME is generic/missing
+        // Upload file to Firebase Storage
+        const filename = `${Date.now()}-${file.name}`;
+        const storagePath = `users/${user.uid}/projects/${projectId}/media/${filename}`;
+        
+        const uploadResult = await firebaseStorage.upload(storagePath, file);
+        
+        if (!uploadResult.success) {
+          toast.error(`Failed to upload ${file.name}`);
+          continue;
+        }
+
+        // Save asset metadata to Firebase Database
         const mediaType = inferMediaType(file.type) !== "video"
           ? inferMediaType(file.type)
           : inferMediaType(file.name);
-        const asset = await db.entities.MediaAsset.create({
-          project_id: projectId,
+        
+        const assetData = {
           name: file.name,
-          file_url,
+          file_url: uploadResult.url,
           file_type: file.type,
           media_type: mediaType,
           duration: 0,
-        });
-        onAssetAdded(asset);
-        uploaded++;
+          size: file.size,
+          uploadedAt: new Date().toISOString()
+        };
+
+        // Create asset in database
+        const dbResult = await firebaseDB.push(
+          `/users/${user.uid}/projects/${projectId}/assets`,
+          assetData
+        );
+
+        if (dbResult.success) {
+          const asset = { id: dbResult.key, ...assetData };
+          onAssetAdded(asset);
+          uploaded++;
+        } else {
+          toast.error(`Failed to save ${file.name} metadata`);
+        }
       }
       toast.success(`${uploaded} file(s) uploaded`);
     } catch (err) {
@@ -112,9 +140,21 @@ export default function MediaLibrary({ assets, projectId, onAssetAdded, onAddToT
   };
 
   const handleDelete = async (asset) => {
-    await db.entities.MediaAsset.delete(asset.id);
-    onAssetDeleted(asset.id);
-    toast.success("Asset removed");
+    if (!user?.uid) return;
+    
+    try {
+      // Delete from Storage
+      if (asset.storagePath) {
+        await firebaseStorage.delete(asset.storagePath);
+      }
+      
+      // Delete from Database
+      await firebaseDB.delete(`/users/${user.uid}/projects/${projectId}/assets/${asset.id}`);
+      onAssetDeleted(asset.id);
+      toast.success("Asset removed");
+    } catch (err) {
+      toast.error(`Failed to delete asset: ${err.message}`);
+    }
   };
 
   const handleAddToTimeline = (asset) => {

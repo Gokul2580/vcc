@@ -1,11 +1,11 @@
-const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
-
 import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-
 import { Upload, Sparkles, ChevronRight, CheckCircle, Zap, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import { firebaseStorage, firebaseDB } from "@/lib/firebaseService";
+import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 
 // Steps: 1=select, 2=preview+ask, 3=platform, 4=enhancing → auto-navigate to editor
 const PLATFORMS = [
@@ -61,6 +61,7 @@ function IPhoneProgressBar({ value }) {
 
 export default function VideoEnhancer({ initialFile, initialUrl, onBack }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   // If launched from Landing with a pre-selected file, start at step 2
   const [step, setStep] = useState(initialFile ? 2 : 1);
   const [videoFile, setVideoFile] = useState(initialFile || null);
@@ -90,37 +91,75 @@ export default function VideoEnhancer({ initialFile, initialUrl, onBack }) {
   };
 
   const handleContinueToEnhance = async () => {
-    if (!selectedPlatform) return;
+    if (!selectedPlatform || !user?.uid) {
+      toast.error("Please log in first");
+      return;
+    }
     setStep(4);
     setEnhanceStage(0);
     setEnhancePct(0);
 
     // Upload while animating stages
-    let uploadedAsset = null;
-    let projectRef = null;
-    let timelineRef = null;
+    let projectId = null;
 
     // Start upload in background
     const uploadPromise = (async () => {
-      const { file_url } = await db.integrations.Core.UploadFile({ file: videoFile });
-      const project = await db.entities.Project.create({
-        name: videoFile.name.replace(/\.[^.]+$/, "") || "Enhanced Video",
-        status: "editing",
-      });
-      const asset = await db.entities.MediaAsset.create({
-        project_id: project.id,
-        name: videoFile.name,
-        file_url,
-        media_type: "video",
-        file_type: videoFile.type,
-        duration: 0,
-      });
-      const tl = await db.entities.Timeline.create({
-        project_id: project.id,
-        timeline_json: {
+      try {
+        // Upload video to Firebase Storage
+        const filename = `${Date.now()}-${videoFile.name}`;
+        const storagePath = `users/${user.uid}/videos/enhancer/${filename}`;
+        
+        const uploadResult = await firebaseStorage.upload(storagePath, videoFile);
+        
+        if (!uploadResult.success) {
+          toast.error("Failed to upload video");
+          navigate("/Dashboard");
+          return;
+        }
+
+        // Create project in Firebase
+        const projectData = {
+          name: videoFile.name.replace(/\.[^.]+$/, "") || "Enhanced Video",
+          status: "editing",
+          platform: selectedPlatform,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        const projectResult = await firebaseDB.push(
+          `/users/${user.uid}/projects`,
+          projectData
+        );
+
+        if (!projectResult.success) {
+          toast.error("Failed to create project");
+          navigate("/Dashboard");
+          return;
+        }
+
+        projectId = projectResult.key;
+
+        // Create asset in database
+        const assetData = {
+          name: videoFile.name,
+          file_url: uploadResult.url,
+          file_type: videoFile.type,
+          media_type: "video",
+          size: videoFile.size,
+          uploadedAt: new Date().toISOString(),
+          storagePath: uploadResult.path
+        };
+
+        const assetResult = await firebaseDB.push(
+          `/users/${user.uid}/projects/${projectId}/assets`,
+          assetData
+        );
+
+        // Create timeline with the uploaded video
+        const timelineData = {
           clips: [{
-            id: asset.id,
-            src: file_url,
+            id: assetResult.key,
+            src: uploadResult.url,
             name: videoFile.name,
             order: 1,
             start: 0,
@@ -131,10 +170,26 @@ export default function VideoEnhancer({ initialFile, initialUrl, onBack }) {
             muted: false,
           }],
           texts: [],
-          settings: { aspectRatio: "16:9", fps: 30 },
-        },
-      });
-      return { project, asset, timeline: tl };
+          settings: { 
+            aspectRatio: selectedPlatform === "instagram" || selectedPlatform === "tiktok" ? "9:16" : "16:9", 
+            fps: 30 
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        await firebaseDB.set(
+          `/users/${user.uid}/projects/${projectId}/timeline`,
+          timelineData
+        );
+
+        return { projectId };
+      } catch (error) {
+        console.error("Upload error:", error);
+        toast.error(`Upload failed: ${error.message}`);
+        navigate("/Dashboard");
+        return { projectId: null };
+      }
     })();
 
     // Animate through stages
@@ -142,9 +197,11 @@ export default function VideoEnhancer({ initialFile, initialUrl, onBack }) {
     const runStage = () => {
       if (idx >= ENHANCE_STAGES.length) {
         // Wait for upload then navigate
-        uploadPromise.then(({ project }) => {
-          navigate(`/Editor?projectId=${project.id}`);
-        }).catch(() => navigate("/Dashboard"));
+        uploadPromise.then(({ projectId }) => {
+          if (projectId) {
+            navigate(`/Editor?projectId=${projectId}`);
+          }
+        });
         return;
       }
       setEnhanceStage(idx);
