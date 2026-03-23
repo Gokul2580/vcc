@@ -1,29 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Clapperboard, Mic, Zap, Layers, Download, ArrowRight, Play, Sparkles, ChevronRight, Star, Upload, Film } from "lucide-react";
-
-// Initialize database connection
-const db = globalThis.__B44_DB__ || { 
-  auth: { 
-    isAuthenticated: async() => false, 
-    me: async() => null 
-  }, 
-  entities: new Proxy({}, { 
-    get: () => ({ 
-      filter: async() => [], 
-      get: async() => null, 
-      create: async() => ({}), 
-      update: async() => ({}), 
-      delete: async() => ({}) 
-    }) 
-  }), 
-  integrations: { 
-    Core: { 
-      UploadFile: async() => ({ file_url: '' }) 
-    } 
-  } 
-};
-
 import VideoEnhancer from "./VideoEnhancer";
 
 const FEATURES = [

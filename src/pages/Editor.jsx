@@ -1,5 +1,3 @@
-const db = globalThis.__B44_DB__ || { auth:{ isAuthenticated: async()=>false, me: async()=>null }, entities:new Proxy({}, { get:()=>({ filter:async()=>[], get:async()=>null, create:async()=>({}), update:async()=>({}), delete:async()=>({}) }) }), integrations:{ Core:{ UploadFile:async()=>({ file_url:'' }) } } };
-
 import React, { useState, useEffect, useCallback, useReducer, useRef } from "react";
 
 import { useQuery } from "@tanstack/react-query";
@@ -19,10 +17,13 @@ import { ensureTracks, inferMediaType } from "@/components/editor/timelineHelper
 import { smartInsertAsset } from "@/components/editor/smartInsertAsset";
 import { executeEditorIntent } from "@/components/editor/editorPipeline";
 import { useEditorState } from "@/components/editor/useEditorState";
+import { useAuth } from "@/lib/AuthContext";
+import { firebaseDB, getTimeline, saveTimeline } from "@/lib/firebaseService";
 
 export default function Editor() {
   const urlParams = new URLSearchParams(window.location.search);
   const projectId = urlParams.get("projectId");
+  const { user } = useAuth();
 
   const [timeline, dispatchTimeline] = useReducer(timelineReducer, { clips: [], texts: [] });
   const setTimeline = (tl) => dispatchTimeline({ type: "__set__", __payload: tl });
@@ -78,25 +79,37 @@ export default function Editor() {
   // Session context — tracks last edited clip, recent commands, current goal
   const sessionContext = useRef({ lastClipId: null, lastClipName: null, recentCommands: [], currentGoal: null });
 
-  // ── Data fetching ──────────────────────────────────────────────────────────
+  // ── Data fetching from Firebase ──────────────────────────────────────────
 
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => db.entities.Project.filter({ id: projectId }),
-    enabled: !!projectId,
-    select: (d) => d[0],
+    queryKey: ["project", projectId, user?.uid],
+    queryFn: async () => {
+      if (!user?.uid) return null;
+      const projectData = await firebaseDB.get(`/users/${user.uid}/projects/${projectId}`);
+      return projectData;
+    },
+    enabled: !!projectId && !!user?.uid,
   });
 
   const { data: assets = [] } = useQuery({
-    queryKey: ["assets", projectId],
-    queryFn: () => db.entities.MediaAsset.filter({ project_id: projectId }),
-    enabled: !!projectId,
+    queryKey: ["assets", projectId, user?.uid],
+    queryFn: async () => {
+      if (!user?.uid) return [];
+      const assetsData = await firebaseDB.get(`/users/${user.uid}/projects/${projectId}/assets`);
+      if (!assetsData) return [];
+      return Object.entries(assetsData).map(([id, data]) => ({ id, ...data }));
+    },
+    enabled: !!projectId && !!user?.uid,
   });
 
   const { data: timelines } = useQuery({
-    queryKey: ["timeline", projectId],
-    queryFn: () => db.entities.Timeline.filter({ project_id: projectId }),
-    enabled: !!projectId,
+    queryKey: ["timeline", projectId, user?.uid],
+    queryFn: async () => {
+      if (!user?.uid) return [];
+      const timelineData = await firebaseDB.get(`/users/${user.uid}/projects/${projectId}/timeline`);
+      return timelineData ? [{ ...timelineData, id: projectId }] : [];
+    },
+    enabled: !!projectId && !!user?.uid,
   });
 
   useEffect(() => { setLocalAssets(assets); }, [assets]);
@@ -112,19 +125,22 @@ export default function Editor() {
 
   // ── Persistence ────────────────────────────────────────────────────────────
 
-  const saveTimeline = useCallback(async (tl) => {
-    if (!timelineRecord) return;
+  const saveTimelineToFirebase = useCallback(async (tl) => {
+    if (!user?.uid || !projectId) return;
     setSaving(true);
-    await db.entities.Timeline.update(timelineRecord.id, { timeline_json: tl });
+    try {
+      await firebaseDB.set(`/users/${user.uid}/projects/${projectId}/timeline`, { 
+        timeline_json: tl,
+        updatedAt: new Date().toISOString()
+      });
+      toast.success("Timeline saved");
+    } catch (error) {
+      console.error('Failed to save timeline:', error);
+      toast.error("Failed to save timeline");
+    }
     setSaving(false);
-    toast.success("Timeline saved");
-  }, [timelineRecord]);
+  }, [user?.uid, projectId]);
 
-  // ── Central Intent Handler ─────────────────────────────────────────────────
-  /**
-   * All editor inputs (chat, voice, buttons, shortcuts) call handleIntent().
-   * It runs the unified pipeline and routes the result.
-   */
   const handleIntent = useCallback(async (intent) => {
     if (isBusy && intent.type !== "action") return; // block new commands while busy
     startCommand();
@@ -157,7 +173,7 @@ export default function Editor() {
         if (history.length < 2) return prev;
         history.pop(); // remove current
         const last = history[history.length - 1];
-        saveTimeline(last);
+        saveTimelineToFirebase(last);
         return last;
       });
       setPendingResult({ updatedTimeline: timeline, responseMessage: "Undid the last change.", action: "none", _ts: Date.now() });
@@ -173,7 +189,7 @@ export default function Editor() {
     if (action !== "none") {
       timelineHistory.current = [...timelineHistory.current.slice(-19), updatedTimeline]; // keep last 20
       setTimeline(updatedTimeline);
-      saveTimeline(updatedTimeline);
+      saveTimelineToFirebase(updatedTimeline);
       // Update session context
       const sc = sessionContext.current;
       if (result.affectedClipId) {
@@ -228,7 +244,7 @@ export default function Editor() {
     if (result.responseMessage) {
       setPendingResult({ ...result, _ts: Date.now() });
     }
-  }, [timeline, saveTimeline, selectedClipId]);
+  }, [timeline, saveTimelineToFirebase, selectedClipId]);
 
   // ── Asset & timeline helpers (direct actions) ──────────────────────────────
 
@@ -247,12 +263,12 @@ export default function Editor() {
     }
 
     setTimeline(result.timeline);
-    saveTimeline(result.timeline);
+    saveTimelineToFirebase(result.timeline);
 
     const mediaType = asset.media_type || inferMediaType(asset.file_type) || inferMediaType(asset.name) || "video";
     const trackLabel = mediaType === "audio" ? "audio track" : mediaType === "image" ? "image overlay" : "video track";
     toast.success(`Added "${asset.name}" to ${trackLabel}`);
-  }, [timeline, localAssets, timelinePlayhead, saveTimeline]);
+  }, [timeline, localAssets, timelinePlayhead, saveTimelineToFirebase]);
 
   const handleSetTransition = useCallback((clipId, transitionType) => {
     handleIntent({ type: "action", action: "add_transition", clipId, transitionType, transitionDuration: 0.5 });
@@ -265,8 +281,8 @@ export default function Editor() {
   const handleReorder = useCallback((reorderedClips) => {
     const updated = { ...timeline, clips: reorderedClips };
     setTimeline(updated);
-    saveTimeline(updated);
-  }, [timeline, saveTimeline]);
+    saveTimelineToFirebase(updated);
+  }, [timeline, saveTimelineToFirebase]);
 
   // ── Guard ──────────────────────────────────────────────────────────────────
 

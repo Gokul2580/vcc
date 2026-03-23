@@ -1,26 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { appParams } from '@/lib/app-params';
-
-const db = globalThis.__B44_DB__ || { 
-  auth: { 
-    isAuthenticated: async() => false, 
-    me: async() => null 
-  }, 
-  entities: new Proxy({}, { 
-    get: () => ({ 
-      filter: async() => [], 
-      get: async() => null, 
-      create: async() => ({}), 
-      update: async() => ({}), 
-      delete: async() => ({}) 
-    }) 
-  }), 
-  integrations: { 
-    Core: { 
-      UploadFile: async() => ({ file_url: '' }) 
-    } 
-  } 
-};
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 const AuthContext = createContext();
 
@@ -28,72 +8,50 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
+  const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null);
 
   useEffect(() => {
-    checkAppState();
-  }, []);
-
-  const checkAppState = async () => {
-    try {
-      setIsLoadingPublicSettings(true);
-      setAuthError(null);
-      
-      // Check if user is authenticated
-      if (appParams.token) {
-        await checkUserAuth();
+    // Listen to Firebase authentication state changes
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        setIsAuthenticated(true);
+        setAuthError(null);
       } else {
-        setIsLoadingAuth(false);
+        setUser(null);
         setIsAuthenticated(false);
       }
-      setIsLoadingPublicSettings(false);
-    } catch (error) {
-      console.error('Unexpected error:', error);
+      setIsLoadingAuth(false);
+    }, (error) => {
+      console.error('Auth error:', error);
       setAuthError({
-        type: 'unknown',
-        message: error.message || 'An unexpected error occurred'
+        type: 'auth_error',
+        message: error.message
       });
-      setIsLoadingPublicSettings(false);
       setIsLoadingAuth(false);
-    }
-  };
+    });
 
-  const checkUserAuth = async () => {
+    return () => unsubscribe();
+  }, []);
+
+  const logout = async () => {
     try {
-      setIsLoadingAuth(true);
-      const currentUser = await db.auth.me();
-      setUser(currentUser);
-      setIsAuthenticated(!!currentUser);
-      setIsLoadingAuth(false);
-    } catch (error) {
-      console.error('User auth check failed:', error);
-      setIsLoadingAuth(false);
+      await signOut(auth);
+      setUser(null);
       setIsAuthenticated(false);
-      
-      if (error.status === 401 || error.status === 403) {
-        setAuthError({
-          type: 'auth_required',
-          message: 'Authentication required'
-        });
-      }
-    }
-  };
-
-  const logout = (shouldRedirect = true) => {
-    setUser(null);
-    setIsAuthenticated(false);
-    
-    if (shouldRedirect) {
-      db.auth.logout?.(window.location.href);
-    } else {
-      db.auth.logout?.();
+    } catch (error) {
+      console.error('Logout error:', error);
+      setAuthError({
+        type: 'logout_error',
+        message: error.message
+      });
     }
   };
 
   const navigateToLogin = () => {
-    db.auth.redirectToLogin?.(window.location.href);
+    window.location.href = '/login';
   };
 
   return (
@@ -106,7 +64,7 @@ export const AuthProvider = ({ children }) => {
       appPublicSettings,
       logout,
       navigateToLogin,
-      checkAppState
+      checkAppState: () => {}
     }}>
       {children}
     </AuthContext.Provider>
